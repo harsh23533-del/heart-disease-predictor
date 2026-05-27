@@ -1,8 +1,23 @@
-# app.py
+import os
 import streamlit as st
 import pandas as pd
 import numpy as np
 import shap, joblib, plotly.graph_objects as go
+from data_loader import load_data, preprocess
+from xgboost import XGBClassifier
+
+# Auto-train if model files missing (needed for cloud deployment)
+if not os.path.exists('model.pkl'):
+    st.warning("Training model for the first time... please wait 2-3 minutes ⏳")
+    df = load_data()
+    X_train, X_test, y_train, y_test, scaler, feature_names = preprocess(df)
+    model = XGBClassifier(n_estimators=200, max_depth=5, learning_rate=0.05,
+                          subsample=0.8, colsample_bytree=0.8, random_state=42,
+                          eval_metric='logloss')
+    model.fit(X_train, y_train)
+    joblib.dump(model, 'model.pkl')
+    joblib.dump(scaler, 'scaler.pkl')
+    joblib.dump(feature_names, 'features.pkl')
 
 model         = joblib.load('model.pkl')
 scaler        = joblib.load('scaler.pkl')
@@ -36,7 +51,7 @@ input_data = pd.DataFrame([[age,sex,cp,trestbps,chol,fbs,restecg,
                           columns=feature_names)
 input_scaled = scaler.transform(input_data)
 
-prob    = model.predict_proba(input_scaled)[0][1]
+prob     = model.predict_proba(input_scaled)[0][1]
 risk_pct = int(prob * 100)
 
 col1, col2 = st.columns([1, 2])
