@@ -47,21 +47,26 @@ elif not st.session_state.uploaded_image:
 
 else:
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    model = genai.GenerativeModel("gemini-1.5-flash-latest")
 
     if len(st.session_state.messages) == 0:
         with st.spinner("AI is analyzing your image..."):
-            response = model.generate_content([
-                "You are a medical AI assistant. Analyze this medical image carefully. "
-                "Describe what you see, identify any notable findings, and explain them "
-                "in simple language a patient can understand. Always remind the user to "
-                "consult a doctor for proper diagnosis.",
-                st.session_state.uploaded_image
-            ])
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": response.text
-            })
+            try:
+                response = model.generate_content([
+                    "You are a medical AI assistant. Analyze this medical image carefully. "
+                    "Describe what you see, identify any notable findings, and explain them "
+                    "in simple language a patient can understand. Always remind the user to "
+                    "consult a doctor for proper diagnosis.",
+                    st.session_state.uploaded_image
+                ])
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": response.text
+                })
+            except Exception as e:
+                st.error(f"Error: {str(e)[:200]}")
+                st.info("Please wait a few minutes and try again — free tier limit reached.")
+                st.stop()
 
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
@@ -74,11 +79,12 @@ else:
 
         with st.chat_message("assistant"):
             with st.spinner("Thinking..."):
-                history = "\n".join([
-                    f"{m['role'].upper()}: {m['content']}"
-                    for m in st.session_state.messages[:-1]
-                ])
-                full_prompt = f"""You are a medical AI assistant. 
+                try:
+                    history = "\n".join([
+                        f"{m['role'].upper()}: {m['content']}"
+                        for m in st.session_state.messages[:-1]
+                    ])
+                    full_prompt = f"""You are a medical AI assistant. 
 Previous conversation:
 {history}
 
@@ -86,15 +92,17 @@ User's new question: {prompt}
 
 Answer based on the medical image provided and the conversation history."""
 
-                response = model.generate_content([
-                    full_prompt,
-                    st.session_state.uploaded_image
-                ])
-                st.write(response.text)
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": response.text
-                })
+                    response = model.generate_content([
+                        full_prompt,
+                        st.session_state.uploaded_image
+                    ])
+                    st.write(response.text)
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": response.text
+                    })
+                except Exception as e:
+                    st.error("Rate limit reached. Please wait a minute and try again.")
 
 st.markdown("---")
 st.caption("⚠️ For educational use only. Always consult a qualified doctor.")
