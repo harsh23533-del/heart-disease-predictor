@@ -11,7 +11,6 @@ st.markdown("""
     border: 1.5px solid #e0e0e0;
     background: white;
     box-shadow: 0 2px 8px rgba(0,0,0,0.07);
-    height: 160px;
 }
 .tool-emoji { font-size: 36px; }
 .tool-title { font-size: 17px; font-weight: 700; margin: 8px 0 4px 0; }
@@ -44,7 +43,7 @@ for i, (emoji, title, desc, color, page) in enumerate(tools):
             <div class="tool-desc">{desc}</div>
         </div>
         """, unsafe_allow_html=True)
-        if st.button(f"Open →", key=f"btn_{i}"):
+        if st.button(f"Open {title}", key=f"btn_{i}"):
             st.switch_page(page)
 
 st.markdown("---")
