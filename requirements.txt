@@ -7,6 +7,6 @@ optuna
 streamlit
 plotly
 joblib
-tensorflow
+tensorflow-cpu
 pillow
 google-generativeai
