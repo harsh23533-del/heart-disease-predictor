@@ -20,10 +20,10 @@ else:
     col1, col2 = st.columns([1, 2])
 
     with col1:
-        st.image(image, caption="Your Photo", use_container_width=True)
+        st.image(image, caption="Your Photo", width='stretch')
 
     with col2:
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.0-flash")
         with st.spinner("AI analyzing..."):
             prompt = """You are a dermatology AI assistant. Analyze this skin image and provide:
 1. What condition this might be (simple name)
