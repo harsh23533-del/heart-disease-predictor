@@ -8,4 +8,4 @@ streamlit
 plotly
 joblib
 google-generativeai
-Pillow
+Pillowpdfplumber
