@@ -7,5 +7,6 @@ optuna
 streamlit
 plotly
 joblib
-google-generativeai
-Pillowpdfplumber
+Pillow
+onnxruntime
+pdfplumber
