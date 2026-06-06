@@ -10,3 +10,4 @@ joblib
 Pillow
 onnxruntime
 pdfplumber
+google-generativeai
