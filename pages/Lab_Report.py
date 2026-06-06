@@ -1,353 +1,352 @@
 import streamlit as st
-import google.generativeai as genai
-from PIL import Image
-import json
 import re
+try:
+    import pdfplumber
+    PDF_OK = True
+except ImportError:
+    PDF_OK = False
 
-st.set_page_config(page_title="Lab Report Analyzer", page_icon="🔬", layout="wide")
+st.set_page_config(page_title="Medical Report Summarizer", page_icon="📄", layout="wide")
 
-LANGUAGES = {
+# ─── Language Strings ───────────────────────────────────────────────
+LANG = {
     "English": {
-        "title": "🔬 Lab Report Analyzer",
-        "caption": "Upload your lab report — AI will read and analyze it automatically",
-        "upload_header": "📄 Upload Lab Report",
-        "upload_text": "Upload blood test report image",
-        "api_warning": "👈 Enter your Gemini API key in the sidebar to begin",
-        "analyzing": "🔍 AI is reading your report...",
-        "detected": "Test Detected",
-        "result_title": "📊 Your Results",
-        "normal": "Normal", "high": "High ⚠️", "low": "Low ⚠️",
-        "consult": "⚠️ Please consult a doctor for proper diagnosis",
-        "speak": "🔊 Read Results Aloud",
-        "enter_key": "Enter Gemini API Key",
-        "how_to": "How to use",
-        "step1": "1️⃣ Enter Gemini API Key",
-        "step2": "2️⃣ Select your language",
-        "step3": "3️⃣ Upload lab report photo",
-        "step4": "4️⃣ AI reads & analyzes automatically",
+        "title": "📄 Medical Report Summarizer",
+        "subtitle": "Upload your lab report — get instant AI summary",
+        "upload": "Upload Lab Report (PDF or TXT)",
+        "analyzing": "Analyzing your report...",
+        "summary": "📋 Report Summary",
+        "findings": "🔬 Key Findings",
+        "normal": "✅ Normal",
+        "abnormal": "⚠️ Abnormal / Needs Attention",
+        "advice": "💡 General Advice",
+        "disclaimer": "⚠️ For educational use only. Please consult a doctor.",
+        "no_text": "Could not extract text. Please upload a valid PDF or TXT file.",
+        "select_lang": "Select Language",
+        "parameters": "📊 Detected Parameters",
+        "high": "HIGH",
+        "low": "LOW",
+        "ok": "NORMAL",
     },
     "Hindi": {
-        "title": "🔬 लैब रिपोर्ट विश्लेषक",
-        "caption": "अपनी लैब रिपोर्ट अपलोड करें — AI स्वचालित रूप से पढ़ेगा",
-        "upload_header": "📄 लैब रिपोर्ट अपलोड करें",
-        "upload_text": "रक्त परीक्षण रिपोर्ट की छवि अपलोड करें",
-        "api_warning": "👈 शुरू करने के लिए Gemini API key डालें",
-        "analyzing": "🔍 AI आपकी रिपोर्ट पढ़ रहा है...",
-        "detected": "परीक्षण पहचाना गया",
-        "result_title": "📊 आपके परिणाम",
-        "normal": "सामान्य", "high": "अधिक ⚠️", "low": "कम ⚠️",
-        "consult": "⚠️ कृपया डॉक्टर से परामर्श करें",
-        "speak": "🔊 परिणाम जोर से पढ़ें",
-        "enter_key": "Gemini API Key दर्ज करें",
-        "how_to": "कैसे उपयोग करें",
-        "step1": "1️⃣ Gemini API Key दर्ज करें",
-        "step2": "2️⃣ अपनी भाषा चुनें",
-        "step3": "3️⃣ लैब रिपोर्ट की फोटो अपलोड करें",
-        "step4": "4️⃣ AI स्वचालित रूप से विश्लेषण करता है",
+        "title": "📄 मेडिकल रिपोर्ट समराइज़र",
+        "subtitle": "अपनी लैब रिपोर्ट अपलोड करें — तुरंत AI सारांश पाएं",
+        "upload": "लैब रिपोर्ट अपलोड करें (PDF या TXT)",
+        "analyzing": "आपकी रिपोर्ट का विश्लेषण हो रहा है...",
+        "summary": "📋 रिपोर्ट सारांश",
+        "findings": "🔬 मुख्य निष्कर्ष",
+        "normal": "✅ सामान्य",
+        "abnormal": "⚠️ असामान्य / ध्यान दें",
+        "advice": "💡 सामान्य सलाह",
+        "disclaimer": "⚠️ केवल शैक्षिक उद्देश्य के लिए। कृपया डॉक्टर से सलाह लें।",
+        "no_text": "टेक्स्ट नहीं निकाल सका। कृपया सही PDF या TXT फ़ाइल अपलोड करें।",
+        "select_lang": "भाषा चुनें",
+        "parameters": "📊 मिले पैरामीटर",
+        "high": "अधिक",
+        "low": "कम",
+        "ok": "सामान्य",
     },
     "Tamil": {
-        "title": "🔬 ஆய்வக அறிக்கை பகுப்பாய்வி",
-        "caption": "உங்கள் அறிக்கையை பதிவேற்றவும் — AI தானாக படிக்கும்",
-        "upload_header": "📄 அறிக்கையை பதிவேற்றவும்",
-        "upload_text": "இரத்த பரிசோதனை அறிக்கை படத்தை பதிவேற்றவும்",
-        "api_warning": "👈 தொடங்க Gemini API key உள்ளிடவும்",
-        "analyzing": "🔍 AI உங்கள் அறிக்கையை படிக்கிறது...",
-        "detected": "சோதனை கண்டறியப்பட்டது",
-        "result_title": "📊 உங்கள் முடிவுகள்",
-        "normal": "சாதாரண", "high": "அதிகம் ⚠️", "low": "குறைவு ⚠️",
-        "consult": "⚠️ மருத்துவரை அணுகவும்",
-        "speak": "🔊 முடிவுகளை சத்தமாக படிக்கவும்",
-        "enter_key": "Gemini API Key உள்ளிடவும்",
-        "how_to": "எப்படி பயன்படுத்துவது",
-        "step1": "1️⃣ Gemini API Key உள்ளிடவும்",
-        "step2": "2️⃣ மொழியை தேர்ந்தெடுக்கவும்",
-        "step3": "3️⃣ அறிக்கை படத்தை பதிவேற்றவும்",
-        "step4": "4️⃣ AI தானாக படிக்கும்",
+        "title": "📄 மருத்துவ அறிக்கை சுருக்கம்",
+        "subtitle": "உங்கள் ஆய்வக அறிக்கையை பதிவேற்றவும் — உடனடி AI சுருக்கம்",
+        "upload": "ஆய்வக அறிக்கையை பதிவேற்றவும் (PDF அல்லது TXT)",
+        "analyzing": "உங்கள் அறிக்கை பகுப்பாய்வு செய்யப்படுகிறது...",
+        "summary": "📋 அறிக்கை சுருக்கம்",
+        "findings": "🔬 முக்கிய கண்டுபிடிப்புகள்",
+        "normal": "✅ இயல்பான",
+        "abnormal": "⚠️ அசாதாரண / கவனம் தேவை",
+        "advice": "💡 பொது அறிவுரை",
+        "disclaimer": "⚠️ கல்வி நோக்கங்களுக்காக மட்டுமே. மருத்துவரை அணுகவும்।",
+        "no_text": "உரையை பிரிக்க முடியவில்லை. சரியான PDF அல்லது TXT கோப்பை பதிவேற்றவும்।",
+        "select_lang": "மொழியை தேர்ந்தெடுக்கவும்",
+        "parameters": "📊 கண்டறியப்பட்ட அளவுருக்கள்",
+        "high": "அதிகம்",
+        "low": "குறைவு",
+        "ok": "இயல்பு",
     },
     "Telugu": {
-        "title": "🔬 ల్యాబ్ నివేదిక విశ్లేషకుడు",
-        "caption": "మీ నివేదికను అప్లోడ్ చేయండి — AI స్వయంచాలకంగా చదువుతుంది",
-        "upload_header": "📄 నివేదికను అప్లోడ్ చేయండి",
-        "upload_text": "రక్త పరీక్ష నివేదిక చిత్రాన్ని అప్లోడ్ చేయండి",
-        "api_warning": "👈 Gemini API key నమోదు చేయండి",
-        "analyzing": "🔍 AI మీ నివేదికను చదువుతోంది...",
-        "detected": "పరీక్ష గుర్తించబడింది",
-        "result_title": "📊 మీ ఫలితాలు",
-        "normal": "సాధారణ", "high": "అధికం ⚠️", "low": "తక్కువ ⚠️",
-        "consult": "⚠️ వైద్యుడిని సంప్రదించండి",
-        "speak": "🔊 ఫలితాలను బిగ్గరగా చదవండి",
-        "enter_key": "Gemini API Key నమోదు చేయండి",
-        "how_to": "ఎలా ఉపయోగించాలి",
-        "step1": "1️⃣ Gemini API Key నమోదు చేయండి",
-        "step2": "2️⃣ భాషను ఎంచుకోండి",
-        "step3": "3️⃣ నివేదిక చిత్రాన్ని అప్లోడ్ చేయండి",
-        "step4": "4️⃣ AI స్వయంచాలకంగా చదువుతుంది",
+        "title": "📄 వైద్య నివేదిక సారాంశం",
+        "subtitle": "మీ లాబ్ నివేదికను అప్‌లోడ్ చేయండి — తక్షణ AI సారాంశం",
+        "upload": "లాబ్ నివేదికను అప్‌లోడ్ చేయండి (PDF లేదా TXT)",
+        "analyzing": "మీ నివేదిక విశ్లేషించబడుతోంది...",
+        "summary": "📋 నివేదిక సారాంశం",
+        "findings": "🔬 ముఖ్య అన్వేషణలు",
+        "normal": "✅ సాధారణం",
+        "abnormal": "⚠️ అసాధారణం / శ్రద్ధ అవసరం",
+        "advice": "💡 సాధారణ సలహా",
+        "disclaimer": "⚠️ విద్యా ప్రయోజనాల కోసం మాత్రమే. దయచేసి వైద్యుడిని సంప్రదించండి।",
+        "no_text": "వచనాన్ని సేకరించడం సాధ్యం కాలేదు. సరైన PDF లేదా TXT ఫైల్ అప్‌లోడ్ చేయండి।",
+        "select_lang": "భాషను ఎంచుకోండి",
+        "parameters": "📊 గుర్తించబడిన పారామీటర్లు",
+        "high": "అధికం",
+        "low": "తక్కువ",
+        "ok": "సాధారణం",
     },
     "Bengali": {
-        "title": "🔬 ল্যাব রিপোর্ট বিশ্লেষক",
-        "caption": "আপনার রিপোর্ট আপলোড করুন — AI স্বয়ংক্রিয়ভাবে পড়বে",
-        "upload_header": "📄 রিপোর্ট আপলোড করুন",
-        "upload_text": "রক্ত পরীক্ষার রিপোর্টের ছবি আপলোড করুন",
-        "api_warning": "👈 Gemini API key দিন",
-        "analyzing": "🔍 AI আপনার রিপোর্ট পড়ছে...",
-        "detected": "পরীক্ষা সনাক্ত করা হয়েছে",
-        "result_title": "📊 আপনার ফলাফল",
-        "normal": "স্বাভাবিক", "high": "বেশি ⚠️", "low": "কম ⚠️",
-        "consult": "⚠️ ডাক্তারের পরামর্শ নিন",
-        "speak": "🔊 ফলাফল জোরে পড়ুন",
-        "enter_key": "Gemini API Key দিন",
-        "how_to": "কীভাবে ব্যবহার করবেন",
-        "step1": "1️⃣ Gemini API Key দিন",
-        "step2": "2️⃣ ভাষা বেছে নিন",
-        "step3": "3️⃣ রিপোর্টের ছবি আপলোড করুন",
-        "step4": "4️⃣ AI স্বয়ংক্রিয়ভাবে পড়বে",
+        "title": "📄 মেডিকেল রিপোর্ট সারসংক্ষেপ",
+        "subtitle": "আপনার ল্যাব রিপোর্ট আপলোড করুন — তাৎক্ষণিক AI সারসংক্ষেপ পান",
+        "upload": "ল্যাব রিপোর্ট আপলোড করুন (PDF বা TXT)",
+        "analyzing": "আপনার রিপোর্ট বিশ্লেষণ হচ্ছে...",
+        "summary": "📋 রিপোর্ট সারসংক্ষেপ",
+        "findings": "🔬 মূল অনুসন্ধান",
+        "normal": "✅ স্বাভাবিক",
+        "abnormal": "⚠️ অস্বাভাবিক / মনোযোগ প্রয়োজন",
+        "advice": "💡 সাধারণ পরামর্শ",
+        "disclaimer": "⚠️ শুধুমাত্র শিক্ষামূলক উদ্দেশ্যে। অনুগ্রহ করে ডাক্তারের পরামর্শ নিন।",
+        "no_text": "টেক্সট বের করা সম্ভব হয়নি। সঠিক PDF বা TXT ফাইল আপলোড করুন।",
+        "select_lang": "ভাষা নির্বাচন করুন",
+        "parameters": "📊 সনাক্তকৃত প্যারামিটার",
+        "high": "বেশি",
+        "low": "কম",
+        "ok": "স্বাভাবিক",
     },
-    "Marathi": {
-        "title": "🔬 लॅब रिपोर्ट विश्लेषक",
-        "caption": "तुमची लॅब रिपोर्ट अपलोड करा — AI आपोआप वाचेल",
-        "upload_header": "📄 रिपोर्ट अपलोड करा",
-        "upload_text": "रक्त चाचणी रिपोर्टची प्रतिमा अपलोड करा",
-        "api_warning": "👈 Gemini API key टाका",
-        "analyzing": "🔍 AI तुमची रिपोर्ट वाचत आहे...",
-        "detected": "चाचणी ओळखली गेली",
-        "result_title": "📊 तुमचे निकाल",
-        "normal": "सामान्य", "high": "जास्त ⚠️", "low": "कमी ⚠️",
-        "consult": "⚠️ डॉक्टरांचा सल्ला घ्या",
-        "speak": "🔊 निकाल मोठ्याने वाचा",
-        "enter_key": "Gemini API Key टाका",
-        "how_to": "कसे वापरावे",
-        "step1": "1️⃣ Gemini API Key टाका",
-        "step2": "2️⃣ भाषा निवडा",
-        "step3": "3️⃣ रिपोर्टचा फोटो अपलोड करा",
-        "step4": "4️⃣ AI आपोआप वाचेल",
-    },
-    "Gujarati": {
-        "title": "🔬 લેબ રિપોર્ટ વિશ્લેષક",
-        "caption": "તમારો રિપોર્ટ અપલોડ કરો — AI આપમેળે વાંચશે",
-        "upload_header": "📄 રિપોર્ટ અપલોડ કરો",
-        "upload_text": "રક્ત પરીક્ષણ રિપોર્ટની છબી અપલોડ કરો",
-        "api_warning": "👈 Gemini API key દાખલ કરો",
-        "analyzing": "🔍 AI તમારો રિપોર્ટ વાંચી રહ્યું છે...",
-        "detected": "પરીક્ષણ શોધાયું",
-        "result_title": "📊 તમારા પરિણામો",
-        "normal": "સામાન્ય", "high": "વધારે ⚠️", "low": "ઓછું ⚠️",
-        "consult": "⚠️ ડૉક્ટરની સલાહ લો",
-        "speak": "🔊 પરિણામો મોટેથી વાંચો",
-        "enter_key": "Gemini API Key દાખલ કરો",
-        "how_to": "કેવી રીતે ઉપયોગ કરવો",
-        "step1": "1️⃣ Gemini API Key દાખલ કરો",
-        "step2": "2️⃣ ભાષા પસંદ કરો",
-        "step3": "3️⃣ રિપોર્ટનો ફોટો અપલોડ કરો",
-        "step4": "4️⃣ AI આપમેળે વાંચશે",
-    }
 }
 
-LANG_CODES = {
-    "English": "en-US", "Hindi": "hi-IN", "Tamil": "ta-IN",
-    "Telugu": "te-IN", "Bengali": "bn-IN", "Marathi": "mr-IN", "Gujarati": "gu-IN"
+# ─── Lab Parameters Database ────────────────────────────────────────
+PARAMS = {
+    "hemoglobin":    {"aliases": ["hemoglobin", "hb", "haemoglobin"],          "min": 12.0, "max": 17.5, "unit": "g/dL"},
+    "glucose":       {"aliases": ["glucose", "blood sugar", "fasting sugar"],   "min": 70,   "max": 100,  "unit": "mg/dL"},
+    "hba1c":         {"aliases": ["hba1c", "glycated", "a1c"],                  "min": 4.0,  "max": 5.7,  "unit": "%"},
+    "creatinine":    {"aliases": ["creatinine", "serum creatinine"],            "min": 0.6,  "max": 1.2,  "unit": "mg/dL"},
+    "urea":          {"aliases": ["urea", "blood urea", "bun"],                 "min": 7,    "max": 20,   "unit": "mg/dL"},
+    "cholesterol":   {"aliases": ["cholesterol", "total cholesterol"],          "min": 0,    "max": 200,  "unit": "mg/dL"},
+    "triglycerides": {"aliases": ["triglycerides", "tg"],                       "min": 0,    "max": 150,  "unit": "mg/dL"},
+    "hdl":           {"aliases": ["hdl", "hdl cholesterol"],                    "min": 40,   "max": 999,  "unit": "mg/dL"},
+    "ldl":           {"aliases": ["ldl", "ldl cholesterol"],                    "min": 0,    "max": 100,  "unit": "mg/dL"},
+    "wbc":           {"aliases": ["wbc", "white blood", "leukocytes"],          "min": 4000, "max": 11000,"unit": "cells/μL"},
+    "rbc":           {"aliases": ["rbc", "red blood"],                          "min": 4.2,  "max": 5.9,  "unit": "million/μL"},
+    "platelets":     {"aliases": ["platelets", "plt", "thrombocytes"],          "min": 150000,"max":400000,"unit": "cells/μL"},
+    "tsh":           {"aliases": ["tsh", "thyroid stimulating"],                "min": 0.4,  "max": 4.0,  "unit": "mIU/L"},
+    "sodium":        {"aliases": ["sodium", "na+", "serum sodium"],             "min": 136,  "max": 145,  "unit": "mEq/L"},
+    "potassium":     {"aliases": ["potassium", "k+", "serum potassium"],        "min": 3.5,  "max": 5.0,  "unit": "mEq/L"},
+    "calcium":       {"aliases": ["calcium", "serum calcium"],                  "min": 8.5,  "max": 10.5, "unit": "mg/dL"},
+    "uric acid":     {"aliases": ["uric acid", "urate"],                        "min": 3.5,  "max": 7.2,  "unit": "mg/dL"},
+    "bilirubin":     {"aliases": ["bilirubin", "total bilirubin"],              "min": 0.2,  "max": 1.2,  "unit": "mg/dL"},
+    "sgpt":          {"aliases": ["sgpt", "alt", "alanine"],                    "min": 7,    "max": 40,   "unit": "U/L"},
+    "sgot":          {"aliases": ["sgot", "ast", "aspartate"],                  "min": 10,   "max": 40,   "unit": "U/L"},
 }
 
-NORMAL_RANGES = {
-    "LFT": {
-        "SGOT": (10, 40, "U/L"), "AST": (10, 40, "U/L"),
-        "SGPT": (7, 56, "U/L"), "ALT": (7, 56, "U/L"),
-        "BILIRUBIN TOTAL": (0.2, 1.2, "mg/dL"),
-        "BILIRUBIN DIRECT": (0.0, 0.3, "mg/dL"),
-        "ALKALINE PHOSPHATASE": (44, 147, "U/L"),
-        "TOTAL PROTEIN": (6.3, 8.2, "g/dL"),
-        "ALBUMIN": (3.5, 5.0, "g/dL"),
+ADVICE = {
+    "English": {
+        "hemoglobin":    "Eat iron-rich foods like spinach, lentils, meat. Low Hb may indicate anemia.",
+        "glucose":       "Limit sugar intake. Exercise regularly. Monitor fasting sugar.",
+        "hba1c":         "Long-term blood sugar control. Consult endocrinologist if high.",
+        "creatinine":    "Drink plenty of water. Avoid excess protein. May indicate kidney stress.",
+        "cholesterol":   "Reduce fried foods, exercise daily. High cholesterol risks heart disease.",
+        "triglycerides": "Avoid sugary drinks and refined carbs. Exercise helps.",
+        "hdl":           "Low HDL is bad. Exercise and healthy fats (nuts, fish) increase HDL.",
+        "ldl":           "High LDL increases heart risk. Reduce saturated fats.",
+        "wbc":           "Abnormal WBC may indicate infection or immune issue. See doctor.",
+        "tsh":           "Thyroid issue detected. Consult endocrinologist.",
+        "uric acid":     "High uric acid causes gout. Drink water, avoid red meat and alcohol.",
+        "sgpt":          "Elevated liver enzyme. Avoid alcohol, fatty food. See doctor.",
+        "sgot":          "Elevated liver/heart enzyme. Medical evaluation needed.",
     },
-    "Thyroid": {
-        "TSH": (0.4, 4.0, "mIU/L"),
-        "T3": (80, 200, "ng/dL"),
-        "T4": (5.0, 12.0, "µg/dL"),
-        "FREE T3": (2.3, 4.2, "pg/mL"),
-        "FREE T4": (0.8, 1.8, "ng/dL"),
+    "Hindi": {
+        "hemoglobin":    "पालक, दाल, मांस जैसे आयरन युक्त खाद्य पदार्थ खाएं। कम Hb एनीमिया का संकेत हो सकता है।",
+        "glucose":       "चीनी कम खाएं। नियमित व्यायाम करें। फास्टिंग शुगर की निगरानी करें।",
+        "hba1c":         "दीर्घकालिक रक्त शर्करा नियंत्रण। अधिक होने पर एंडोक्रिनोलॉजिस्ट से मिलें।",
+        "creatinine":    "खूब पानी पिएं। अधिक प्रोटीन से बचें। किडनी पर असर हो सकता है।",
+        "cholesterol":   "तले खाने से बचें, रोज व्यायाम करें। हृदय रोग का खतरा बढ़ सकता है।",
+        "triglycerides": "मीठे पेय और रिफाइंड कार्ब से बचें। व्यायाम फायदेमंद है।",
+        "hdl":           "कम HDL खराब है। व्यायाम और स्वस्थ वसा (मेवे, मछली) HDL बढ़ाते हैं।",
+        "ldl":           "अधिक LDL हृदय जोखिम बढ़ाता है। संतृप्त वसा कम करें।",
+        "wbc":           "असामान्य WBC संक्रमण का संकेत हो सकता है। डॉक्टर से मिलें।",
+        "tsh":           "थायरॉइड समस्या मिली। एंडोक्रिनोलॉजिस्ट से परामर्श लें।",
+        "uric acid":     "अधिक यूरिक एसिड गाउट का कारण बनता है। पानी पिएं, रेड मीट और शराब से बचें।",
+        "sgpt":          "लिवर एंजाइम बढ़ा हुआ है। शराब और वसायुक्त भोजन से बचें।",
+        "sgot":          "लिवर/हृदय एंजाइम बढ़ा हुआ। चिकित्सीय मूल्यांकन जरूरी।",
     },
-    "Diabetes": {
-        "FASTING GLUCOSE": (70, 100, "mg/dL"),
-        "POST PRANDIAL": (70, 140, "mg/dL"),
-        "HBA1C": (4.0, 5.6, "%"),
-        "RANDOM BLOOD SUGAR": (70, 140, "mg/dL"),
+    "Tamil": {
+        "hemoglobin":    "கீரை, பருப்பு, இறைச்சி போன்ற இரும்புச்சத்து உணவுகளை சாப்பிடுங்கள்.",
+        "glucose":       "சர்க்கரையை குறையுங்கள். தினமும் உடற்பயிற்சி செய்யுங்கள்.",
+        "hba1c":         "நீண்டகால இரத்த சர்க்கரை கட்டுப்பாடு. அதிகமாக இருந்தால் மருத்துவரை அணுகவும்.",
+        "creatinine":    "அதிக தண்ணீர் குடிக்கவும். சிறுநீரக அழுத்தம் இருக்கலாம்.",
+        "cholesterol":   "வறுத்த உணவுகளை தவிர்க்கவும். இதய நோய் அபாயம் உள்ளது.",
+        "triglycerides": "இனிப்பு பானங்களை தவிர்க்கவும். உடற்பயிற்சி உதவும்.",
+        "hdl":           "குறைந்த HDL தீங்கானது. உடற்பயிற்சி மற்றும் ஆரோக்கியமான கொழுப்புகள் உதவும்.",
+        "ldl":           "அதிக LDL இதய அபாயத்தை அதிகரிக்கும்.",
+        "wbc":           "அசாதாரண WBC தொற்றை குறிக்கலாம். மருத்துவரை அணுகவும்.",
+        "tsh":           "தைராய்டு பிரச்சினை. மருத்துவரை அணுகவும்.",
+        "uric acid":     "அதிக யூரிக் அமிலம் கீல்வாதத்தை ஏற்படுத்தும்.",
+        "sgpt":          "கல்லீரல் என்சைம் அதிகமாக உள்ளது. ஆல்கஹால் தவிர்க்கவும்.",
+        "sgot":          "கல்லீரல் என்சைம் அதிகம். மருத்துவ மதிப்பீடு தேவை.",
     },
-    "Lipid": {
-        "TOTAL CHOLESTEROL": (0, 200, "mg/dL"),
-        "HDL": (40, 60, "mg/dL"),
-        "LDL": (0, 100, "mg/dL"),
-        "TRIGLYCERIDES": (0, 150, "mg/dL"),
-        "VLDL": (5, 40, "mg/dL"),
+    "Telugu": {
+        "hemoglobin":    "పాలకూర, పప్పు, మాంసం వంటి ఇనుము అధికంగా ఉన్న ఆహారాలు తినండి.",
+        "glucose":       "చక్కెర తక్కువగా తినండి. రోజూ వ్యాయామం చేయండి.",
+        "hba1c":         "దీర్ఘకాలిక రక్తంలో చక్కెర నియంత్రణ. ఎక్కువగా ఉంటే వైద్యుడిని సంప్రదించండి.",
+        "creatinine":    "నీరు ఎక్కువగా తాగండి. మూత్రపిండ సమస్య ఉండవచ్చు.",
+        "cholesterol":   "వేయించిన ఆహారాలు తగ్గించండి. గుండె జబ్బు ప్రమాదం ఉంది.",
+        "triglycerides": "తీపి పానీయాలు తగ్గించండి. వ్యాయామం సహాయపడుతుంది.",
+        "hdl":           "తక్కువ HDL చెడ్డది. వ్యాయామం మరియు ఆరోగ్యకరమైన కొవ్వులు సహాయపడతాయి.",
+        "ldl":           "అధిక LDL గుండె ప్రమాదాన్ని పెంచుతుంది.",
+        "wbc":           "అసాధారణ WBC సంక్రమణను సూచించవచ్చు. వైద్యుడిని సంప్రదించండి.",
+        "tsh":           "థైరాయిడ్ సమస్య గుర్తించబడింది. వైద్యుడిని సంప్రదించండి.",
+        "uric acid":     "అధిక యూరిక్ యాసిడ్ వల్ల గౌట్ వస్తుంది. నీరు తాగండి.",
+        "sgpt":          "కాలేయ ఎంజైమ్ అధికంగా ఉంది. మద్యం మానుకోండి.",
+        "sgot":          "కాలేయ/గుండె ఎంజైమ్ అధికంగా ఉంది. వైద్య మూల్యాంకనం అవసరం.",
     },
-    "CBC": {
-        "HEMOGLOBIN": (12, 17, "g/dL"),
-        "WBC": (4000, 11000, "cells/µL"),
-        "PLATELETS": (150000, 400000, "cells/µL"),
-        "RBC": (4.5, 5.5, "million/µL"),
-        "HEMATOCRIT": (36, 50, "%"),
-    }
+    "Bengali": {
+        "hemoglobin":    "পালং শাক, ডাল, মাংসের মতো আয়রন সমৃদ্ধ খাবার খান।",
+        "glucose":       "চিনি কমান। নিয়মিত ব্যায়াম করুন। ফাস্টিং সুগার পর্যবেক্ষণ করুন।",
+        "hba1c":         "দীর্ঘমেয়াদী রক্তের সুগার নিয়ন্ত্রণ। বেশি হলে ডাক্তার দেখান।",
+        "creatinine":    "প্রচুর পানি পান করুন। কিডনির সমস্যা হতে পারে।",
+        "cholesterol":   "ভাজা খাবার কমান। হৃদরোগের ঝুঁকি আছে।",
+        "triglycerides": "মিষ্টি পানীয় এড়িয়ে চলুন। ব্যায়াম উপকারী।",
+        "hdl":           "কম HDL খারাপ। ব্যায়াম ও স্বাস্থ্যকর চর্বি HDL বাড়ায়।",
+        "ldl":           "বেশি LDL হৃদয়ের ঝুঁকি বাড়ায়।",
+        "wbc":           "অস্বাভাবিক WBC সংক্রমণ নির্দেশ করতে পারে। ডাক্তার দেখান।",
+        "tsh":           "থাইরয়েড সমস্যা পাওয়া গেছে। বিশেষজ্ঞ দেখান।",
+        "uric acid":     "বেশি ইউরিক এসিড গেঁটেবাত সৃষ্টি করে। পানি পান করুন।",
+        "sgpt":          "লিভার এনজাইম বেশি। মদ্যপান ও চর্বিযুক্ত খাবার এড়ান।",
+        "sgot":          "লিভার এনজাইম বেশি। চিকিৎসা মূল্যায়ন দরকার।",
+    },
 }
 
-with st.sidebar:
-    selected_lang = st.selectbox("🌐 Language / भाषा", list(LANGUAGES.keys()))
-    t = LANGUAGES[selected_lang]
-    st.markdown("---")
-    api_key = st.text_input(t["enter_key"], type="password")
-    st.markdown("---")
-    st.markdown(f"**{t['how_to']}**")
-    st.markdown(t["step1"])
-    st.markdown(t["step2"])
-    st.markdown(t["step3"])
-    st.markdown(t["step4"])
-    st.markdown("---")
-    st.header(t["upload_header"])
-    uploaded_file = st.file_uploader(t["upload_text"], type=["jpg", "jpeg", "png", "webp"])
+# ─── Helper Functions ────────────────────────────────────────────────
 
-t = LANGUAGES[selected_lang]
-st.title(t["title"])
-st.caption(t["caption"])
+def extract_text_from_pdf(file):
+    if not PDF_OK:
+        return ""
+    try:
+        import pdfplumber
+        with pdfplumber.open(file) as pdf:
+            return "\n".join(p.extract_text() or "" for p in pdf.pages)
+    except:
+        return ""
 
-if not api_key:
-    st.warning(t["api_warning"])
-    st.markdown("---")
-    st.markdown("### 🏥 Supported Tests")
-    cols = st.columns(5)
-    tests = [
-        ("🫀", "Heart/CBC", "#e74c3c"),
-        ("🫁", "LFT", "#f39c12"),
-        ("🦋", "Thyroid", "#9b59b6"),
-        ("🩸", "Diabetes", "#e67e22"),
-        ("💧", "Lipid", "#3498db"),
-    ]
-    for col, (emoji, name, color) in zip(cols, tests):
-        with col:
-            st.markdown(f"""
-            <div style="text-align:center; padding:20px; background:{color}20;
-                border-radius:12px; border: 2px solid {color};">
-                <div style="font-size:40px;">{emoji}</div>
-                <div style="font-weight:bold; color:{color};">{name}</div>
-            </div>
-            """, unsafe_allow_html=True)
+def extract_text_from_txt(file):
+    try:
+        return file.read().decode("utf-8", errors="ignore")
+    except:
+        return ""
 
-elif not uploaded_file:
-    st.markdown("""
-    <div style="text-align:center; padding:60px; background:#f8f9fa;
-        border-radius:20px; border: 3px dashed #dee2e6;">
-        <div style="font-size:80px;">📄</div>
-        <h2>Upload Your Lab Report</h2>
-        <p style="font-size:18px; color:#666;">Take a photo of your blood test report and upload it</p>
-        <p style="font-size:16px; color:#999;">👈 Use the sidebar to upload</p>
-    </div>
-    """, unsafe_allow_html=True)
+def find_value(text, aliases):
+    text_lower = text.lower()
+    for alias in aliases:
+        pattern = rf"{re.escape(alias)}[\s:=\|]+([0-9]+\.?[0-9]*)"
+        match = re.search(pattern, text_lower)
+        if match:
+            return float(match.group(1))
+    return None
 
-else:
-    image = Image.open(uploaded_file)
-    col1, col2 = st.columns([1, 2])
+def analyze_report(text, lang):
+    results = []
+    L = LANG[lang]
+    A = ADVICE.get(lang, ADVICE["English"])
 
-    with col1:
-        st.image(image, caption="Uploaded Report", use_container_width=True)
+    for param, info in PARAMS.items():
+        val = find_value(text, info["aliases"])
+        if val is None:
+            continue
+        mn, mx = info["min"], info["max"]
+        if val < mn:
+            status = L["low"]
+            flag = "low"
+        elif val > mx:
+            status = L["high"]
+            flag = "high"
+        else:
+            status = L["ok"]
+            flag = "ok"
+        advice = A.get(param, "")
+        results.append({
+            "param": param.title(),
+            "value": val,
+            "unit": info["unit"],
+            "min": mn,
+            "max": mx,
+            "status": status,
+            "flag": flag,
+            "advice": advice,
+        })
+    return results
 
-    with col2:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash-latest")
+def get_overall_summary(results, lang):
+    L = LANG[lang]
+    abnormal = [r for r in results if r["flag"] != "ok"]
+    normal = [r for r in results if r["flag"] == "ok"]
+    if not results:
+        return "No standard lab parameters detected in this report."
+    if not abnormal:
+        return L["normal"] + f" — All {len(normal)} detected parameters are within normal range. Great health indicators!"
+    return L["abnormal"] + f" — {len(abnormal)} out of {len(results)} parameters need attention."
 
-        with st.spinner(t["analyzing"]):
-            try:
-                extract_prompt = """You are a medical lab report AI. Analyze this lab report image.
-1. Identify what type of test this is (LFT, Thyroid, Diabetes, Lipid, CBC, or Other)
-2. Extract ALL test values from the report
+# ─── UI ─────────────────────────────────────────────────────────────
 
-Respond ONLY in this exact JSON format with no extra text:
-{
-  "test_type": "LFT",
-  "values": {
-    "parameter_name": "value with unit"
-  }
-}"""
-                response = model.generate_content([extract_prompt, image])
-                raw = response.text.strip()
-                raw = re.sub(r'```json|```', '', raw).strip()
-                data = json.loads(raw)
-                test_type = data.get("test_type", "Unknown")
-                values = data.get("values", {})
+lang = st.sidebar.selectbox("🌐 " + "Language / भाषा", list(LANG.keys()))
+L = LANG[lang]
 
-                st.success(f"✅ {t['detected']}: **{test_type}**")
-                st.markdown(f"### {t['result_title']}")
+st.markdown(f"<h1 style='text-align:center'>{L['title']}</h1>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align:center;color:#888'>{L['subtitle']}</p>", unsafe_allow_html=True)
+st.markdown("---")
 
-                normal_ref = NORMAL_RANGES.get(test_type, {})
-                results_text = f"{test_type} Test Results:\n"
+if not PDF_OK:
+    st.warning("📦 pdfplumber not installed — PDF support disabled. TXT files work fine.")
 
-                for param, value in values.items():
-                    num_val = None
-                    try:
-                        num_val = float(re.findall(r'[\d.]+', str(value))[0])
-                    except Exception:
-                        pass
+uploaded = st.file_uploader(L["upload"], type=["pdf", "txt"])
 
-                    status = t["normal"]
-                    color = "#2ecc71"
+if uploaded:
+    with st.spinner(L["analyzing"]):
+        if uploaded.name.endswith(".pdf"):
+            text = extract_text_from_pdf(uploaded)
+        else:
+            text = extract_text_from_txt(uploaded)
 
-                    for ref_param, (low, high, unit) in normal_ref.items():
-                        if ref_param in param.upper():
-                            if num_val is not None:
-                                if num_val < low:
-                                    status = t["low"]
-                                    color = "#3498db"
-                                elif num_val > high:
-                                    status = t["high"]
-                                    color = "#e74c3c"
-                            break
+    if not text.strip():
+        st.error(L["no_text"])
+        st.stop()
 
-                    results_text += f"{param}: {value} — {status}\n"
-                    st.markdown(f"""
-                    <div style="display:flex; justify-content:space-between; align-items:center;
-                        padding:10px 16px; margin:4px 0; border-radius:8px;
-                        background:{color}15; border-left: 4px solid {color};">
-                        <span style="font-weight:600;">{param}</span>
-                        <span style="font-size:18px; font-weight:bold;">{value}</span>
-                        <span style="color:{color}; font-weight:600;">{status}</span>
-                    </div>
-                    """, unsafe_allow_html=True)
+    results = analyze_report(text, lang)
+    summary = get_overall_summary(results, lang)
 
-                st.markdown("---")
-                with st.spinner("Generating analysis..."):
-                    analysis_prompt = f"""You are a medical AI assistant.
-Analyze these {test_type} test results and explain them in {selected_lang} language.
-Keep it simple so even an uneducated person can understand.
+    # Summary box
+    color = "#27ae60" if all(r["flag"] == "ok" for r in results) else "#e74c3c"
+    st.markdown(
+        f"<div style='padding:16px;border-left:6px solid {color};border-radius:8px;background:{color}18'>"
+        f"<h3>{L['summary']}</h3><p style='font-size:16px'>{summary}</p></div>",
+        unsafe_allow_html=True
+    )
+    st.markdown("")
 
-Results:
-{results_text}
+    if results:
+        st.markdown(f"### {L['parameters']}")
+        col1, col2, col3 = st.columns(3)
+        cols = [col1, col2, col3]
 
-Provide:
-1. Simple explanation of what these results mean
-2. Which values are concerning (if any)
-3. Simple advice
-4. When to see a doctor
+        for i, r in enumerate(results):
+            with cols[i % 3]:
+                if r["flag"] == "ok":
+                    bg, border = "#27ae6018", "#27ae60"
+                elif r["flag"] == "high":
+                    bg, border = "#e74c3c18", "#e74c3c"
+                else:
+                    bg, border = "#f39c1218", "#f39c12"
 
-IMPORTANT: Respond ENTIRELY in {selected_lang} language only."""
+                st.markdown(
+                    f"<div style='padding:12px;margin:6px 0;border-radius:8px;border-left:4px solid {border};background:{bg}'>"
+                    f"<b>{r['param']}</b><br>"
+                    f"<span style='font-size:22px;font-weight:bold'>{r['value']} {r['unit']}</span><br>"
+                    f"<span style='color:{border}'>{r['status']}</span><br>"
+                    f"<small>Normal: {r['min']}–{r['max']} {r['unit']}</small>"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
 
-                    analysis = model.generate_content(analysis_prompt)
-                    st.markdown("### 🩺 Analysis")
-                    st.write(analysis.text)
+        # Advice for abnormal
+        abnormal = [r for r in results if r["flag"] != "ok" and r["advice"]]
+        if abnormal:
+            st.markdown(f"### {L['advice']}")
+            for r in abnormal:
+                st.info(f"**{r['param']}** — {r['advice']}")
 
-                    safe_text = analysis.text[:800].replace('`', '').replace('"', '').replace("'", "")
-                    lang_code = LANG_CODES.get(selected_lang, "en-US")
+    else:
+        st.warning("No standard lab parameters detected. Make sure your report contains values like Hemoglobin, Glucose, Creatinine etc.")
 
-                    if st.button(t["speak"]):
-                        st.markdown(f"""
-                        <script>
-                        var msg = new SpeechSynthesisUtterance("{safe_text}");
-                        msg.lang = '{lang_code}';
-                        msg.rate = 0.85;
-                        window.speechSynthesis.speak(msg);
-                        </script>
-                        """, unsafe_allow_html=True)
-                        st.success("🔊 Speaking...")
-
-                st.warning(t["consult"])
-
-            except json.JSONDecodeError:
-                st.error("Could not read report clearly. Please upload a clearer image.")
-            except Exception as e:
-                st.error("Rate limit reached or error occurred. Please wait a minute and try again.")
+    with st.expander("📄 Raw Extracted Text"):
+        st.text(text[:3000])
 
 st.markdown("---")
-st.caption("⚠️ For educational use only. Always consult a qualified doctor.")
+st.warning(L["disclaimer"])
+st.caption("Built by Harsh Pandey · No API required · Works offline")
