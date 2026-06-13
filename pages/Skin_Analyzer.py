@@ -8,15 +8,15 @@ st.title("🧴 Skin Disease Analyzer")
 st.caption("AI-powered skin condition detection | DermNet Dataset")
 st.markdown("---")
 
-if not os.path.exists("skin_model.onnx"):
+if not os.path.exists("skin_disease_model.onnx"):
     st.warning("Model not found. Train first using train_skin_dermnet.py")
-    st.info("1. Download DermNet from Kaggle\n2. Run train_skin_dermnet.py\n3. Push skin_model.onnx to repo")
+    st.info("1. Download DermNet from Kaggle\n2. Run train_skin_dermnet.py\n3. Push skin_disease_model.onnx to repo")
     st.stop()
 
 @st.cache_resource
 def load_model():
     import onnxruntime as ort
-    session = ort.InferenceSession("skin_model.onnx")
+    session = ort.InferenceSession("skin_disease_model.onnx")
     with open("classes.json") as f:
         classes = json.load(f)
     return session, classes
@@ -45,3 +45,6 @@ with col2:
             st.progress(conf/100)
 
 st.warning("For educational use only.")
+
+
+
