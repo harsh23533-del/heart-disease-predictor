@@ -18,7 +18,11 @@ def load_model():
     import onnxruntime as ort
     session = ort.InferenceSession("skin_disease_model.onnx")
     with open("classes.json") as f:
-        classes = json.load(f)
+        raw = json.load(f)
+    if isinstance(raw, dict):
+        classes = [raw[str(i)] for i in range(len(raw))]
+    else:
+        classes = raw
     return session, classes
 
 session, CLASSES = load_model()
@@ -45,6 +49,3 @@ with col2:
             st.progress(conf/100)
 
 st.warning("For educational use only.")
-
-
-
