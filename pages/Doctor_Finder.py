@@ -112,10 +112,36 @@ def build_overpass_query(lat, lon, radius_m, specialty):
 def fetch_nearby_doctors(lat, lon, radius_km, specialty, max_results):
     radius_m = radius_km * 1000
     query = build_overpass_query(lat, lon, radius_m, specialty)
-    url = "https://overpass-api.de/api/interpreter"
+
+    # Multiple endpoints — try each until one works
+    endpoints = [
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter",
+        "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+    ]
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+
+    resp = None
+    for url in endpoints:
+        try:
+            resp = requests.post(
+                url,
+                data=f"data={requests.utils.quote(query)}",
+                headers=headers,
+                timeout=30
+            )
+            if resp.status_code == 200:
+                break
+            resp = None
+        except Exception:
+            resp = None
+            continue
+
+    if resp is None or resp.status_code != 200:
+        st.error("❌ Could not reach OpenStreetMap API. Please try again in a moment.")
+        return []
+
     try:
-        resp = requests.post(url, data={"data": query}, timeout=30)
-        resp.raise_for_status()
         elements = resp.json().get("elements", [])
         results = []
         for el in elements:
@@ -149,7 +175,7 @@ def fetch_nearby_doctors(lat, lon, radius_km, specialty, max_results):
         results.sort(key=lambda x: x["dist_km"])
         return results[:max_results]
     except Exception as e:
-        st.error(f"API Error: {e}")
+        st.error(f"Parse Error: {e}")
         return []
 
 # ── Main Search ───────────────────────────────────────────────────
@@ -267,3 +293,7 @@ else:
     - Shows interactive map with **one-click directions** to any doctor
     - Works anywhere in India (and worldwide)
     """)
+
+
+
+    
