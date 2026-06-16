@@ -11,3 +11,6 @@ Pillow
 onnxruntime
 pdfplumber
 google-generativeai
+streamlit-folium
+folium
+geopy
