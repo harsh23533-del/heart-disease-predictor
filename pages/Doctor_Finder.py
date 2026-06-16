@@ -19,21 +19,12 @@ st.markdown("""
     margin-bottom: 12px;
 }
 .dist-badge { background: #1e3a5f; color: #60a5fa; padding: 2px 10px; border-radius: 20px; font-size: 12px; }
-.gps-box {
-    background: #0f2027;
-    border: 2px dashed #3b82f6;
-    border-radius: 12px;
-    padding: 20px;
-    text-align: center;
-    margin-bottom: 16px;
-}
 </style>
 """, unsafe_allow_html=True)
 
 st.title("🏥 Doctor Finder — Live Nearby Search")
 st.caption("Finds real hospitals, clinics & doctors near your current location using OpenStreetMap")
 
-# ── Sidebar ───────────────────────────────────────────────────────
 with st.sidebar:
     st.header("🔍 Search Settings")
     specialty = st.selectbox("Specialty / Type", [
@@ -48,7 +39,23 @@ with st.sidebar:
     radius_km = st.slider("Search Radius (km)", 1, 20, 5)
     max_results = st.slider("Max Results", 5, 30, 15)
 
-# ── GPS Component — injects JS into browser to get real GPS ───────
+# ── Read GPS from URL params ───────────────────────────────────────
+params = st.query_params
+gps_lat = params.get("gps_lat")
+gps_lon = params.get("gps_lon")
+
+if gps_lat and gps_lon:
+    try:
+        st.session_state["gps_lat"] = float(gps_lat)
+        st.session_state["gps_lon"] = float(gps_lon)
+        # Clear URL params after reading
+        st.query_params.clear()
+    except:
+        pass
+
+lat, lon = None, None
+location_source = ""
+
 GPS_HTML = """
 <div style="font-family:sans-serif; padding:4px;">
   <button onclick="getLocation()" style="
@@ -58,39 +65,28 @@ GPS_HTML = """
     📍 Use My Current GPS Location
   </button>
   <p id="status" style="color:#94a3b8; margin-top:8px; font-size:13px;"></p>
-  <input type="hidden" id="lat_out" value="">
-  <input type="hidden" id="lon_out" value="">
 </div>
-
 <script>
 function getLocation() {
   var status = document.getElementById("status");
   status.innerText = "⏳ Requesting GPS permission...";
   status.style.color = "#facc15";
-
   if (!navigator.geolocation) {
-    status.innerText = "❌ Geolocation not supported by your browser.";
+    status.innerText = "❌ Geolocation not supported.";
     status.style.color = "#f87171";
     return;
   }
-
   navigator.geolocation.getCurrentPosition(
     function(pos) {
       var lat = pos.coords.latitude.toFixed(6);
       var lon = pos.coords.longitude.toFixed(6);
-      status.innerText = "✅ Got location: " + lat + ", " + lon;
+      status.innerText = "✅ Got location: " + lat + ", " + lon + " — reloading...";
       status.style.color = "#4ade80";
-
-      // Send to Streamlit via query param trick
       var url = window.parent.location.href.split('?')[0];
       window.parent.location.href = url + "?gps_lat=" + lat + "&gps_lon=" + lon;
     },
     function(err) {
-      var msgs = {
-        1: "❌ Permission denied. Please allow location access in browser.",
-        2: "❌ Position unavailable. Try manual entry.",
-        3: "❌ Timed out. Try again."
-      };
+      var msgs = {1:"❌ Permission denied.",2:"❌ Position unavailable.",3:"❌ Timed out."};
       status.innerText = msgs[err.code] || "❌ Unknown error.";
       status.style.color = "#f87171";
     },
@@ -100,37 +96,28 @@ function getLocation() {
 </script>
 """
 
-# ── Read GPS from URL params if available ─────────────────────────
-params = st.query_params
-gps_lat = params.get("gps_lat")
-gps_lon = params.get("gps_lon")
-
-lat, lon = None, None
-location_source = ""
-
-# ── Location Method Tabs ───────────────────────────────────────────
 tab1, tab2, tab3 = st.tabs(["📍 GPS (Auto)", "🏙️ City / Address", "🔢 Manual Coordinates"])
 
 with tab1:
-    st.markdown("Click the button below — your browser will ask for location permission.")
-    components.html(GPS_HTML, height=120)
-
-    if gps_lat and gps_lon:
+    if "gps_lat" in st.session_state and "gps_lon" in st.session_state:
+        lat = st.session_state["gps_lat"]
+        lon = st.session_state["gps_lon"]
+        location_source = "GPS"
+        st.success(f"✅ GPS location captured: **{lat}, {lon}**")
         try:
-            lat = float(gps_lat)
-            lon = float(gps_lon)
-            location_source = "GPS"
-            st.success(f"✅ GPS location captured: **{lat}, {lon}**")
-            # Show reverse geocode name
-            try:
-                geo = Nominatim(user_agent="healthcare_ai_harsh_v2")
-                rev = geo.reverse((lat, lon), language="en", timeout=8)
-                if rev:
-                    st.caption(f"📍 {rev.address[:100]}")
-            except:
-                pass
+            geo = Nominatim(user_agent="healthcare_ai_harsh_v2")
+            rev = geo.reverse((lat, lon), language="en", timeout=8)
+            if rev:
+                st.caption(f"📍 {rev.address[:100]}")
         except:
-            st.error("Could not parse GPS coordinates. Try manual entry.")
+            pass
+        if st.button("🔄 Refresh GPS Location"):
+            del st.session_state["gps_lat"]
+            del st.session_state["gps_lon"]
+            st.rerun()
+    else:
+        st.markdown("Click the button below — your browser will ask for location permission.")
+        components.html(GPS_HTML, height=120)
 
 with tab2:
     address_input = st.text_input(
@@ -148,7 +135,7 @@ with tab2:
                     location_source = "Address"
                     st.success(f"📍 {loc.address[:90]}")
                 else:
-                    st.error("Not found — try adding city name (e.g. 'Alambagh, Lucknow')")
+                    st.error("Not found — try adding city name")
             except Exception as e:
                 st.error(f"Error: {e}")
 
@@ -165,7 +152,7 @@ with tab3:
         location_source = "Manual"
         st.success(f"📍 Using: {lat}, {lon}")
 
-# ── Overpass Query Builder ─────────────────────────────────────────
+# ── Overpass Query ─────────────────────────────────────────────────
 def build_query(lat, lon, radius_m, specialty):
     amenity_map = {
         "All (Doctors & Clinics)": '["amenity"~"hospital|clinic|doctors|pharmacy"]',
@@ -237,7 +224,7 @@ def fetch_doctors(lat, lon, radius_km, specialty, max_results):
     results.sort(key=lambda x: x["dist_km"])
     return results[:max_results]
 
-# ── Search Button ──────────────────────────────────────────────────
+# ── Search ─────────────────────────────────────────────────────────
 st.markdown("---")
 
 if lat and lon:
@@ -259,7 +246,6 @@ if lat and lon:
     if results:
         st.success(f"✅ Found **{len(results)}** healthcare locations within {radius_km} km")
 
-        # ── Map ──────────────────────────────────────────────────
         m = folium.Map(location=[lat, lon], zoom_start=14, tiles="CartoDB dark_matter")
         folium.Marker([lat, lon], popup="📍 You are here",
                       icon=folium.Icon(color="red", icon="home", prefix="fa"),
@@ -283,7 +269,6 @@ if lat and lon:
 
         st_folium(m, width="100%", height=500)
 
-        # ── Cards ────────────────────────────────────────────────
         st.subheader("📋 Results — sorted by distance")
         for i, r in enumerate(results):
             gmaps_dir = f"https://www.google.com/maps/dir/?api=1&destination={r['lat']},{r['lon']}"
@@ -305,7 +290,6 @@ if lat and lon:
             if r["website"]:
                 c3.link_button("🌐 Website", r["website"])
 
-        # ── CSV Export ───────────────────────────────────────────
         import pandas as pd
         df = pd.DataFrame(results)[["name","amenity","dist_km","phone","opening_hours","addr"]]
         df.columns = ["Name","Type","Distance (km)","Phone","Hours","Address"]
