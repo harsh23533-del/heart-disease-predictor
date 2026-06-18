@@ -1,6 +1,6 @@
 import streamlit as st
 import os
-import requests
+import google.generativeai as genai
 import streamlit.components.v1 as components
 
 st.set_page_config(page_title="Voice Assistant", page_icon="🎤", layout="centered")
@@ -17,34 +17,23 @@ st.markdown("""
 st.markdown('<div class="title">🎤 Voice Assistant</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">Speak your health question — AI will answer</div>', unsafe_allow_html=True)
 
-HF_API_KEY = os.environ.get("HF_API_KEY", "")
+# Load Gemini API Key
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 try:
-    if not HF_API_KEY:
-        HF_API_KEY = st.secrets.get("HF_API_KEY", "")
+    if not GEMINI_API_KEY:
+        GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
 except:
     pass
 
-def ask_hf(question):
-    headers = {"Authorization": f"Bearer {HF_API_KEY}"}
-    prompt = f"<s>[INST] You are a helpful healthcare AI assistant. Answer this health question clearly in under 150 words using simple language.\n\nQuestion: {question} [/INST]"
-    models = ["mistralai/Mistral-7B-Instruct-v0.3", "HuggingFaceH4/zephyr-7b-beta"]
-    for model_id in models:
-        try:
-            response = requests.post(
-                f"https://api-inference.huggingface.co/models/{model_id}",
-                headers=headers,
-                json={"inputs": prompt, "parameters": {"max_new_tokens": 300, "temperature": 0.7, "return_full_text": False}},
-                timeout=30
-            )
-            if response.status_code == 200:
-                result = response.json()
-                if isinstance(result, list) and result:
-                    text = result[0].get("generated_text", "").strip()
-                    if text:
-                        return text
-        except:
-            continue
-    return "⚠️ Model loading, please try again in 30 seconds."
+def ask_gemini(question):
+    try:
+        genai.configure(api_key=GEMINI_API_KEY)
+        model = genai.GenerativeModel("gemini-2.0-flash")
+        prompt = f"You are a helpful healthcare AI assistant. Answer this health question clearly in under 150 words using simple language.\n\nQuestion: {question}"
+        response = model.generate_content(prompt)
+        return response.text.strip()
+    except Exception as e:
+        return f"⚠️ Error: {str(e)}"
 
 if "transcript" not in st.session_state:
     st.session_state.transcript = ""
@@ -93,11 +82,11 @@ if clear_btn:
 
 if ask_btn and transcript_input.strip():
     st.session_state.transcript = transcript_input.strip()
-    if not HF_API_KEY:
-        st.error("⚠️ HF_API_KEY not set in Streamlit secrets.")
+    if not GEMINI_API_KEY:
+        st.error("⚠️ GEMINI_API_KEY not set in Streamlit secrets.")
     else:
         with st.spinner("🤖 AI is thinking..."):
-            answer = ask_hf(st.session_state.transcript)
+            answer = ask_gemini(st.session_state.transcript)
             st.session_state.ai_response = answer
             st.session_state.history.append({"q": st.session_state.transcript, "a": answer})
 
@@ -119,4 +108,4 @@ if len(st.session_state.history) > 1:
             st.markdown(f"**AI:** {item['a']}")
 
 st.markdown("---")
-st.caption("🎤 Chrome Web Speech API | 🤖 HuggingFace Mistral | ⚕️ Not medical advice")
+st.caption("🎤 Chrome Web Speech API | 🤖 Google Gemini | ⚕️ Not medical advice")
