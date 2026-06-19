@@ -10,7 +10,8 @@ joblib
 Pillow
 onnxruntime
 pdfplumber
-google-generativeai
+requests
 streamlit-folium
 folium
 geopy
+pytesseract

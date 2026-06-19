@@ -28,23 +28,37 @@ st.set_page_config(page_title="Heart Disease Risk Predictor", page_icon="🫀", 
 st.title("🫀 Heart Disease Risk Predictor")
 st.caption("XGBoost model trained on Cleveland Heart Disease dataset · For educational use only")
 
+# ─── Pick up any values pushed in by the home-page Smart Scanner ───
+prefill = {}
+if st.session_state.get("prefill_target") == "Heart_Disease":
+    prefill = st.session_state.get("prefill", {})
+    if prefill:
+        st.success("📋 Some values below were auto-filled from your uploaded report — please review them.")
+    # consume it so it doesn't re-apply on a later, unrelated visit
+    st.session_state["prefill_target"] = None
+    st.session_state["prefill"] = {}
+
+def _default(key, fallback):
+    """Use the scanner's value if present, otherwise the original default."""
+    return prefill.get(key, fallback)
+
 with st.sidebar:
     st.header("Patient Information")
-    age      = st.slider("Age", 20, 80, 50)
-    sex      = st.selectbox("Sex", [0, 1], format_func=lambda x: "Female" if x==0 else "Male")
+    age      = st.slider("Age", 20, 80, _default("age", 50), key="age")
+    sex      = st.selectbox("Sex", [0, 1], format_func=lambda x: "Female" if x==0 else "Male", key="sex")
     cp       = st.selectbox("Chest pain type", [0,1,2,3],
                             format_func=lambda x: ['Typical angina','Atypical angina',
-                                                   'Non-anginal','Asymptomatic'][x])
-    trestbps = st.slider("Resting blood pressure (mmHg)", 90, 200, 120)
-    chol     = st.slider("Cholesterol (mg/dl)", 100, 600, 200)
-    fbs      = st.selectbox("Fasting blood sugar > 120 mg/dl", [0,1], format_func=lambda x: "No" if x==0 else "Yes")
-    restecg  = st.selectbox("Resting ECG", [0,1,2])
-    thalach  = st.slider("Max heart rate achieved", 60, 220, 150)
-    exang    = st.selectbox("Exercise-induced angina", [0,1], format_func=lambda x: "No" if x==0 else "Yes")
-    oldpeak  = st.slider("ST depression (oldpeak)", 0.0, 6.5, 1.0, 0.1)
-    slope    = st.selectbox("Slope of peak exercise ST", [0,1,2])
-    ca       = st.selectbox("Major vessels coloured by fluoroscopy", [0,1,2,3])
-    thal     = st.selectbox("Thalassemia", [1,2,3], format_func=lambda x: ['','Fixed defect','Normal','Reversible defect'][x])
+                                                   'Non-anginal','Asymptomatic'][x], key="cp")
+    trestbps = st.slider("Resting blood pressure (mmHg)", 90, 200, int(_default("trestbps", 120)), key="trestbps")
+    chol     = st.slider("Cholesterol (mg/dl)", 100, 600, int(_default("chol", 200)), key="chol")
+    fbs      = st.selectbox("Fasting blood sugar > 120 mg/dl", [0,1], format_func=lambda x: "No" if x==0 else "Yes", key="fbs")
+    restecg  = st.selectbox("Resting ECG", [0,1,2], key="restecg")
+    thalach  = st.slider("Max heart rate achieved", 60, 220, int(_default("thalach", 150)), key="thalach")
+    exang    = st.selectbox("Exercise-induced angina", [0,1], format_func=lambda x: "No" if x==0 else "Yes", key="exang")
+    oldpeak  = st.slider("ST depression (oldpeak)", 0.0, 6.5, 1.0, 0.1, key="oldpeak")
+    slope    = st.selectbox("Slope of peak exercise ST", [0,1,2], key="slope")
+    ca       = st.selectbox("Major vessels coloured by fluoroscopy", [0,1,2,3], key="ca")
+    thal     = st.selectbox("Thalassemia", [1,2,3], format_func=lambda x: ['','Fixed defect','Normal','Reversible defect'][x], key="thal")
 
 input_data = pd.DataFrame([[age,sex,cp,trestbps,chol,fbs,restecg,
                             thalach,exang,oldpeak,slope,ca,thal]],

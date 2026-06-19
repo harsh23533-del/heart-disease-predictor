@@ -6,16 +6,28 @@ st.set_page_config(page_title="Blood & Kidney Analyzer", page_icon="🩸", layou
 st.title("🩸 Blood & Kidney Test Analyzer")
 st.caption("Analyze CBC and kidney function · For educational use only")
 
+# ─── Pick up any values pushed in by the home-page Smart Scanner ───
+prefill = {}
+if st.session_state.get("prefill_target") == "Blood_Kidney":
+    prefill = st.session_state.get("prefill", {})
+    if prefill:
+        st.success("📋 Some values below were auto-filled from your uploaded report — please review them.")
+    st.session_state["prefill_target"] = None
+    st.session_state["prefill"] = {}
+
+def _default(key, fallback):
+    return prefill.get(key, fallback)
+
 with st.sidebar:
     st.header("Enter Test Values")
     st.subheader("CBC (Blood Count)")
-    hemoglobin = st.slider("Hemoglobin (g/dL)", 4.0, 20.0, 13.5)
-    wbc = st.slider("WBC (x10³/µL)", 1.0, 30.0, 7.0)
-    platelets = st.slider("Platelets (x10³/µL)", 50.0, 800.0, 250.0)
+    hemoglobin = st.slider("Hemoglobin (g/dL)", 4.0, 20.0, float(_default("hemoglobin", 13.5)), key="hemoglobin")
+    wbc = st.slider("WBC (x10³/µL)", 1.0, 30.0, float(_default("wbc", 7.0)), key="wbc")
+    platelets = st.slider("Platelets (x10³/µL)", 50.0, 800.0, float(_default("platelets", 250.0)), key="platelets")
     st.subheader("Kidney Function")
-    creatinine = st.slider("Creatinine (mg/dL)", 0.4, 15.0, 1.0)
-    bun = st.slider("BUN (mg/dL)", 5.0, 100.0, 15.0)
-    egfr = st.slider("eGFR (mL/min)", 5.0, 120.0, 90.0)
+    creatinine = st.slider("Creatinine (mg/dL)", 0.4, 15.0, float(_default("creatinine", 1.0)), key="creatinine")
+    bun = st.slider("BUN (mg/dL)", 5.0, 100.0, float(_default("bun", 15.0)), key="bun")
+    egfr = st.slider("eGFR (mL/min)", 5.0, 120.0, float(_default("egfr", 90.0)), key="egfr")
 
 def calculate_risks(hgb, wbc_val, plt_val, cr, bun_val, egfr_val):
     risks = {}

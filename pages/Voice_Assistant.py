@@ -1,6 +1,7 @@
 import streamlit as st
 import os
-import google.generativeai as genai
+import requests
+import json
 import streamlit.components.v1 as components
 
 st.set_page_config(page_title="Voice Assistant", page_icon="🎤", layout="centered")
@@ -17,21 +18,65 @@ st.markdown("""
 st.markdown('<div class="title">🎤 Voice Assistant</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">Speak your health question — AI will answer</div>', unsafe_allow_html=True)
 
-# Load Gemini API Key
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+# Supported languages: display name -> (speech recognition code, language label for AI prompt)
+LANGUAGES = {
+    "English": ("en-IN", "English"),
+    "हिन्दी (Hindi)": ("hi-IN", "Hindi"),
+    "বাংলা (Bengali)": ("bn-IN", "Bengali"),
+    "தமிழ் (Tamil)": ("ta-IN", "Tamil"),
+    "मराठी (Marathi)": ("mr-IN", "Marathi"),
+    "ગુજરાતી (Gujarati)": ("gu-IN", "Gujarati"),
+    "ਪੰਜਾਬੀ (Punjabi)": ("pa-IN", "Punjabi"),
+}
+
+selected_lang_name = st.selectbox("🌐 Select language for voice input/output:", list(LANGUAGES.keys()))
+speech_lang_code, ai_lang_label = LANGUAGES[selected_lang_name]
+
+# Load OpenRouter API Key
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 try:
-    if not GEMINI_API_KEY:
-        GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
+    if not OPENROUTER_API_KEY:
+        OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", "")
 except:
     pass
 
-def ask_gemini(question):
+# Model can be changed to any model available on OpenRouter
+OPENROUTER_MODEL = "google/gemini-2.5-flash"
+
+def ask_ai(question, lang_label="English"):
     try:
-        genai.configure(api_key=GEMINI_API_KEY)
-        model = genai.GenerativeModel("gemini-2.0-flash")
-        prompt = f"You are a helpful healthcare AI assistant. Answer this health question clearly in under 150 words using simple language.\n\nQuestion: {question}"
-        response = model.generate_content(prompt)
-        return response.text.strip()
+        response = requests.post(
+            url="https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": OPENROUTER_MODEL,
+                "max_tokens": 500,
+                "reasoning": {"max_tokens": 0},
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": (
+                            "You are a helpful healthcare AI assistant. "
+                            "Answer this health question clearly in under 150 words "
+                            "using simple language. "
+                            f"Respond ONLY in {lang_label} language, written in its "
+                            f"native script (not transliteration).\n\nQuestion: {question}"
+                        ),
+                    }
+                ],
+            },
+            timeout=30,
+        )
+        data = response.json()
+
+        if "choices" not in data:
+            error_msg = data.get("error", {}).get("message", str(data))
+            return f"⚠️ API Error: {error_msg}"
+
+        return data["choices"][0]["message"]["content"].strip()
     except Exception as e:
         return f"⚠️ Error: {str(e)}"
 
@@ -42,7 +87,7 @@ if "ai_response" not in st.session_state:
 if "history" not in st.session_state:
     st.session_state.history = []
 
-speech_html = """
+speech_html = f"""
 <div style="display:flex;flex-direction:column;align-items:center;gap:16px;padding:20px;">
     <button id="micBtn" onclick="toggleListening()" style="width:100px;height:100px;border-radius:50%;background:linear-gradient(135deg,#f0a500,#e65c00);border:none;cursor:pointer;font-size:2.5rem;box-shadow:0 4px 20px rgba(240,165,0,0.4);">🎤</button>
     <div id="statusText" style="color:#aaa;font-size:0.9rem;">Click mic to speak</div>
@@ -51,18 +96,19 @@ speech_html = """
 </div>
 <script>
 let recognition, isListening=false, finalTranscript="";
-function toggleListening(){if(isListening){recognition.stop();}else{startListening();}}
-function startListening(){
-    if(!('webkitSpeechRecognition' in window)&&!('SpeechRecognition' in window)){document.getElementById('statusText').innerText='Use Chrome browser.';return;}
+const SPEECH_LANG = "{speech_lang_code}";
+function toggleListening(){{if(isListening){{recognition.stop();}}else{{startListening();}}}}
+function startListening(){{
+    if(!('webkitSpeechRecognition' in window)&&!('SpeechRecognition' in window)){{document.getElementById('statusText').innerText='Use Chrome browser.';return;}}
     const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-    recognition=new SR();recognition.lang='en-IN';recognition.interimResults=true;recognition.continuous=false;
-    recognition.onstart=()=>{isListening=true;finalTranscript="";document.getElementById('micBtn').style.background='linear-gradient(135deg,#e53935,#b71c1c)';document.getElementById('micBtn').innerHTML='⏹️';document.getElementById('statusText').innerText='🔴 Listening...';document.getElementById('transcriptDiv').style.display='block';document.getElementById('transcriptDiv').innerText='';document.getElementById('sendBtn').style.display='none';};
-    recognition.onresult=(e)=>{let interim='';for(let i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal){finalTranscript+=e.results[i][0].transcript;}else{interim+=e.results[i][0].transcript;}}document.getElementById('transcriptDiv').innerText=finalTranscript||interim;};
-    recognition.onend=()=>{isListening=false;document.getElementById('micBtn').style.background='linear-gradient(135deg,#f0a500,#e65c00)';document.getElementById('micBtn').innerHTML='🎤';document.getElementById('statusText').innerText='✅ Done! Click Send.';if(finalTranscript.trim()){document.getElementById('sendBtn').style.display='block';}};
-    recognition.onerror=(e)=>{isListening=false;document.getElementById('micBtn').style.background='linear-gradient(135deg,#f0a500,#e65c00)';document.getElementById('micBtn').innerHTML='🎤';document.getElementById('statusText').innerText='❌ Error: '+e.error;};
+    recognition=new SR();recognition.lang=SPEECH_LANG;recognition.interimResults=true;recognition.continuous=false;
+    recognition.onstart=()=>{{isListening=true;finalTranscript="";document.getElementById('micBtn').style.background='linear-gradient(135deg,#e53935,#b71c1c)';document.getElementById('micBtn').innerHTML='⏹️';document.getElementById('statusText').innerText='🔴 Listening...';document.getElementById('transcriptDiv').style.display='block';document.getElementById('transcriptDiv').innerText='';document.getElementById('sendBtn').style.display='none';}};
+    recognition.onresult=(e)=>{{let interim='';for(let i=e.resultIndex;i<e.results.length;i++){{if(e.results[i].isFinal){{finalTranscript+=e.results[i][0].transcript;}}else{{interim+=e.results[i][0].transcript;}}}}document.getElementById('transcriptDiv').innerText=finalTranscript||interim;}};
+    recognition.onend=()=>{{isListening=false;document.getElementById('micBtn').style.background='linear-gradient(135deg,#f0a500,#e65c00)';document.getElementById('micBtn').innerHTML='🎤';document.getElementById('statusText').innerText='✅ Done! Click Send.';if(finalTranscript.trim()){{document.getElementById('sendBtn').style.display='block';}}}};
+    recognition.onerror=(e)=>{{isListening=false;document.getElementById('micBtn').style.background='linear-gradient(135deg,#f0a500,#e65c00)';document.getElementById('micBtn').innerHTML='🎤';document.getElementById('statusText').innerText='❌ Error: '+e.error;}};
     recognition.start();
-}
-function sendTranscript(){if(finalTranscript.trim()){window.parent.postMessage({type:'voice_transcript',text:finalTranscript.trim()},'*');document.getElementById('statusText').innerText='⏳ Sending...';document.getElementById('sendBtn').style.display='none';}}
+}}
+function sendTranscript(){{if(finalTranscript.trim()){{window.parent.postMessage({{type:'voice_transcript',text:finalTranscript.trim()}},'*');document.getElementById('statusText').innerText='⏳ Sending...';document.getElementById('sendBtn').style.display='none';}}}}
 </script>
 """
 components.html(speech_html, height=280)
@@ -82,11 +128,11 @@ if clear_btn:
 
 if ask_btn and transcript_input.strip():
     st.session_state.transcript = transcript_input.strip()
-    if not GEMINI_API_KEY:
-        st.error("⚠️ GEMINI_API_KEY not set in Streamlit secrets.")
+    if not OPENROUTER_API_KEY:
+        st.error("⚠️ OPENROUTER_API_KEY not set in Streamlit secrets.")
     else:
         with st.spinner("🤖 AI is thinking..."):
-            answer = ask_gemini(st.session_state.transcript)
+            answer = ask_ai(st.session_state.transcript, ai_lang_label)
             st.session_state.ai_response = answer
             st.session_state.history.append({"q": st.session_state.transcript, "a": answer})
 
@@ -95,8 +141,28 @@ if st.session_state.transcript:
 
 if st.session_state.ai_response:
     st.markdown(f'<div class="response-box">🤖 <b>AI:</b><br><br>{st.session_state.ai_response}</div>', unsafe_allow_html=True)
-    safe_text = st.session_state.ai_response.replace("'", "\\'").replace("`", "")
-    tts_html = f"<script>function speakResponse(){{const u=new SpeechSynthesisUtterance('{safe_text}');u.lang='en-IN';u.rate=0.9;window.speechSynthesis.speak(u);}}</script><div style='margin-top:10px;text-align:center;'><button onclick='speakResponse()' style='padding:8px 20px;background:linear-gradient(135deg,#7b1fa2,#4a148c);color:white;border:none;border-radius:20px;cursor:pointer;'>🔊 Read Aloud</button></div>"
+    safe_text = json.dumps(st.session_state.ai_response)
+    safe_lang = json.dumps(speech_lang_code)
+    tts_html = f"""
+    <script>
+    function speakResponse(){{
+        try {{
+            window.parent.speechSynthesis.cancel();
+            const u = new SpeechSynthesisUtterance({safe_text});
+            u.lang = {safe_lang};
+            u.rate = 0.9;
+            u.onerror = (e) => console.error('TTS error:', e);
+            window.parent.speechSynthesis.speak(u);
+        }} catch(e) {{
+            console.error('Speak failed:', e);
+            alert('Speech failed: ' + e.message);
+        }}
+    }}
+    </script>
+    <div style='margin-top:10px;text-align:center;'>
+        <button onclick='speakResponse()' style='padding:8px 20px;background:linear-gradient(135deg,#7b1fa2,#4a148c);color:white;border:none;border-radius:20px;cursor:pointer;'>🔊 Read Aloud</button>
+    </div>
+    """
     components.html(tts_html, height=60)
 
 if len(st.session_state.history) > 1:
@@ -108,4 +174,4 @@ if len(st.session_state.history) > 1:
             st.markdown(f"**AI:** {item['a']}")
 
 st.markdown("---")
-st.caption("🎤 Chrome Web Speech API | 🤖 Google Gemini | ⚕️ Not medical advice")
+st.caption("🎤 Chrome Web Speech API | 🤖 OpenRouter AI | ⚕️ Not medical advice")
