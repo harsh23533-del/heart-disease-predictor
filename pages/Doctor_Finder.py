@@ -3,7 +3,6 @@ import streamlit.components.v1 as components
 import requests
 import folium
 from streamlit_folium import st_folium
-from geopy.geocoders import Nominatim
 from geopy.distance import geodesic
 import urllib.parse
 
@@ -104,16 +103,83 @@ function getLocation() {
 </script>
 """
 
-# ── Reverse Geocode — exact address ───────────────────────────────
+# ── Photon Reverse Geocode (faster, no rate limit) ────────────────
+@st.cache_data(ttl=3600)
 def get_exact_address(lat, lon):
+    """Photon geocoder — fast, free, no API key, no rate limit"""
     try:
-        geo = Nominatim(user_agent="healthcare_ai_harsh_v3")
-        rev = geo.reverse((lat, lon), language="en", timeout=10, zoom=18)
+        r = requests.get(
+            f"https://photon.komoot.io/reverse?lat={lat}&lon={lon}&limit=1",
+            timeout=6
+        )
+        if r.status_code == 200:
+            props = r.json()["features"][0]["properties"]
+            parts = []
+            for k in ["housenumber", "street", "suburb", "city", "state", "country"]:
+                v = props.get(k, "")
+                if v:
+                    parts.append(str(v))
+            if parts:
+                return ", ".join(parts)
+    except:
+        pass
+    # Fallback to Nominatim if Photon fails
+    try:
+        from geopy.geocoders import Nominatim
+        geo = Nominatim(user_agent="healthcare_ai_harsh_v4")
+        rev = geo.reverse((lat, lon), language="en", timeout=8, zoom=18)
         if rev:
             return rev.address
     except:
         pass
-    return None
+    return f"{lat}, {lon}"
+
+# ── Photon Forward Geocode ─────────────────────────────────────────
+@st.cache_data(ttl=3600)
+def geocode_address(address_input):
+    """Forward geocode using Photon — fast & free"""
+    try:
+        r = requests.get(
+            f"https://photon.komoot.io/api/?q={urllib.parse.quote(address_input + ' India')}&limit=1",
+            timeout=6
+        )
+        if r.status_code == 200:
+            features = r.json().get("features", [])
+            if features:
+                props = features[0]["properties"]
+                coords = features[0]["geometry"]["coordinates"]
+                lon, lat = coords[0], coords[1]
+                parts = []
+                for k in ["name", "street", "city", "state", "country"]:
+                    v = props.get(k, "")
+                    if v:
+                        parts.append(str(v))
+                address = ", ".join(parts) if parts else f"{lat}, {lon}"
+                return lat, lon, address
+    except:
+        pass
+    # Fallback to Nominatim
+    try:
+        from geopy.geocoders import Nominatim
+        geo = Nominatim(user_agent="healthcare_ai_harsh_v4")
+        loc = geo.geocode(address_input + ", India", timeout=8)
+        if loc:
+            return loc.latitude, loc.longitude, loc.address
+    except:
+        pass
+    return None, None, None
+
+# ── OSM tags only — no reverse geocode per doctor ─────────────────
+def get_place_address(tags):
+    """Build address from OSM tags only — no API call"""
+    parts = []
+    for k in ["addr:housenumber", "addr:street", "addr:subdistrict", "addr:city", "addr:state"]:
+        v = tags.get(k, "")
+        if v:
+            parts.append(v)
+    if parts:
+        return ", ".join(parts)
+    return "Address not available"
 
 # ── Location Tabs ──────────────────────────────────────────────────
 tab1, tab2, tab3 = st.tabs(["📍 GPS (Auto)", "🏙️ City / Address", "🔢 Manual Coordinates"])
@@ -123,8 +189,7 @@ with tab1:
         lat = st.session_state["gps_lat"]
         lon = st.session_state["gps_lon"]
         location_source = "GPS"
-        addr = get_exact_address(lat, lon)
-        current_address = addr or f"{lat}, {lon}"
+        current_address = get_exact_address(lat, lon)
         st.markdown(f"""
         <div class="my-location-box">
             <b style="color:#22c55e">✅ Your Current Location (GPS)</b><br>
@@ -132,7 +197,6 @@ with tab1:
             <span style="color:#64748b; font-size:12px">Coordinates: {lat}, {lon}</span>
         </div>
         """, unsafe_allow_html=True)
-        # Google Maps link for current location
         gmaps_me = f"https://www.google.com/maps?q={lat},{lon}"
         st.link_button("🗺️ View My Location on Google Maps", gmaps_me)
         if st.button("🔄 Refresh / Change Location"):
@@ -149,23 +213,17 @@ with tab2:
         placeholder="e.g. Alambagh Lucknow | Sultanpur UP | Varanasi")
     if address_input:
         with st.spinner("📡 Finding location..."):
-            try:
-                geo = Nominatim(user_agent="healthcare_ai_harsh_v3")
-                loc = geo.geocode(address_input + ", India", timeout=10)
-                if loc:
-                    lat = loc.latitude
-                    lon = loc.longitude
-                    location_source = "Address"
-                    current_address = loc.address
-                    st.markdown(f"""
-                    <div class="my-location-box">
-                        <b style="color:#22c55e">✅ Location Found</b><br>
-                        <span style="color:#f8fafc">📍 {loc.address[:120]}</span>
-                    </div>""", unsafe_allow_html=True)
-                else:
-                    st.error("Not found — try adding city name e.g. 'Alambagh, Lucknow'")
-            except Exception as e:
-                st.error(f"Error: {e}")
+            lat, lon, found_address = geocode_address(address_input)
+            if lat and lon:
+                location_source = "Address"
+                current_address = found_address
+                st.markdown(f"""
+                <div class="my-location-box">
+                    <b style="color:#22c55e">✅ Location Found</b><br>
+                    <span style="color:#f8fafc">📍 {found_address[:120]}</span>
+                </div>""", unsafe_allow_html=True)
+            else:
+                st.error("Not found — try adding city name e.g. 'Alambagh, Lucknow'")
 
 with tab3:
     st.caption("Open Google Maps → long-press your location → copy coordinates")
@@ -178,8 +236,7 @@ with tab3:
         lat = manual_lat
         lon = manual_lon
         location_source = "Manual"
-        addr = get_exact_address(lat, lon)
-        current_address = addr or f"{lat}, {lon}"
+        current_address = get_exact_address(lat, lon)
         st.success(f"📍 {current_address[:100]}")
 
 # ── Overpass Query ─────────────────────────────────────────────────
@@ -203,25 +260,7 @@ def build_query(lat, lon, radius_m, specialty):
 out center tags;
 """
 
-def get_place_address(elat, elon, tags):
-    """Build exact address from OSM tags, fallback to reverse geocode"""
-    parts = []
-    for k in ["addr:housenumber","addr:street","addr:subdistrict","addr:city","addr:state"]:
-        v = tags.get(k, "")
-        if v:
-            parts.append(v)
-    if len(parts) >= 2:
-        return ", ".join(parts)
-    # Fallback: reverse geocode the doctor's coordinates
-    try:
-        geo = Nominatim(user_agent="healthcare_ai_harsh_v3")
-        rev = geo.reverse((elat, elon), language="en", timeout=8, zoom=18)
-        if rev:
-            return rev.address
-    except:
-        pass
-    return "Address not available"
-
+@st.cache_data(ttl=600)
 def fetch_doctors(lat, lon, radius_km, specialty, max_results):
     query = build_query(lat, lon, radius_km * 1000, specialty)
     endpoints = [
@@ -241,7 +280,6 @@ def fetch_doctors(lat, lon, radius_km, specialty, max_results):
         except:
             continue
     if not resp:
-        st.error("❌ All Overpass API endpoints failed. Try again later.")
         return []
 
     elements = resp.json().get("elements", [])
@@ -254,7 +292,8 @@ def fetch_doctors(lat, lon, radius_km, specialty, max_results):
             continue
         name = tags.get("name") or tags.get("name:en") or tags.get("amenity", "Unknown Facility")
         dist = geodesic((lat, lon), (elat, elon)).km
-        exact_addr = get_place_address(elat, elon, tags)
+        # OSM tags only — no reverse geocode per doctor
+        exact_addr = get_place_address(tags)
         results.append({
             "name": name,
             "lat": elat, "lon": elon,
@@ -276,11 +315,11 @@ if lat and lon:
     st.info(f"📍 **{location_source}** → {current_address[:80]}...")
     search_btn = st.button("🔍 Find Nearby Doctors & Clinics", type="primary", use_container_width=True)
 
-    cache_key = (round(lat, 4), round(lon, 4), radius_km, specialty)
+    cache_key = (round(lat, 3), round(lon, 3), radius_km, specialty)
 
     if search_btn:
         with st.spinner("🗺️ Searching nearby doctors..."):
-            results = fetch_doctors(lat, lon, radius_km, specialty, max_results)
+            results = fetch_doctors(round(lat, 3), round(lon, 3), radius_km, specialty, max_results)
         st.session_state["results"] = results
         st.session_state["last_search"] = cache_key
     elif st.session_state.get("last_search") == cache_key:
@@ -294,7 +333,6 @@ if lat and lon:
         # ── Map ──────────────────────────────────────────────────
         m = folium.Map(location=[lat, lon], zoom_start=14, tiles="CartoDB dark_matter")
 
-        # Current location marker
         folium.Marker(
             [lat, lon],
             popup=folium.Popup(f"<b>📍 You are here</b><br>{current_address[:80]}", max_width=250),
@@ -310,7 +348,6 @@ if lat and lon:
 
         for i, r in enumerate(results):
             color = color_map.get(r["amenity"], "cadetblue")
-            # Google Maps navigation URL — from current location to doctor
             gmaps_nav = (f"https://www.google.com/maps/dir/?api=1"
                          f"&origin={lat},{lon}"
                          f"&destination={r['lat']},{r['lon']}"
@@ -338,7 +375,6 @@ if lat and lon:
         st.subheader("📋 Nearby Doctors — sorted by distance")
 
         for i, r in enumerate(results):
-            # Google Maps links
             gmaps_nav = (f"https://www.google.com/maps/dir/?api=1"
                          f"&origin={lat},{lon}"
                          f"&destination={r['lat']},{r['lon']}"
