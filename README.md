@@ -1,128 +1,56 @@
-# 🏥 Healthcare AI Platform
-
-A multi-page Streamlit web app offering AI-powered health analysis tools — heart disease risk prediction, blood & kidney report analysis, BMI calculator, multilingual lab report summarizer, skin condition analyzer, and a doctor finder.
-
-🔗 **Live App:** [https://heart-disease-predictor-kwyhoqzo9kzch75zvokxrc.streamlit.app/]
-
----
-
-## ✨ Features
-
-### ❤️ Heart Disease Predictor
-- ML-based risk prediction using **XGBoost (94.53% AUC-ROC)**
-- Interactive **Plotly risk gauge**
-- **SHAP-based explainability** charts showing feature contributions
-
-### 🩸 Blood & Kidney Analyzer
-- AI-powered analysis of blood and kidney function reports
-- Powered by **Gemini API**
-
-### 📋 Lab Report Analyzer
-- Multilingual lab report summarizer (Hindi, English + 5 Indian languages)
-- Rule-based — works without any API
-
-### 🧮 BMI Calculator
-- Calculates BMI and health category instantly
-
-### 👨‍⚕️ Doctor Finder
-- Helps users find relevant doctors/specialists based on condition
-
-### 🩹 Skin Analyzer
-- Skin disease classification using an **ONNX** model (converted from TensorFlow for Streamlit Cloud compatibility)
-- Powered by **Gemini API**
-
----
-
-## 🛠️ Tech Stack
-
-- **Frontend:** Streamlit (multi-page app)
-- **ML/DL:** XGBoost, TensorFlow → ONNX Runtime
-- **Explainability/Viz:** SHAP, Plotly
-- **AI/LLM:** Google Gemini API (multi-key rotation for rate limit handling)
-- **Deployment:** Streamlit Cloud
-
----
-
-## 📂 Project Structure
-
-```
-heart-disease-predictor/
-├── app.py                          # Main entry point
-├── pages/
-│   ├── 1_Heart_Disease_Predictor.py
-│   ├── 2_Blood_Kidney_Analyzer.py
-│   ├── 3_BMI_Calculator.py
-│   ├── 4_Doctor_Finder.py
-│   ├── 5_Lab_Report_Analyzer.py
-│   └── 6_Skin_Analyzer.py
-├── models/
-│   ├── heart_model.pkl
-│   └── skin_model.onnx
-├── requirements.txt
-└── .streamlit/
-    └── secrets.toml                # API keys (NOT committed)
-```
-
----
-
-## ⚙️ Setup & Installation
-
-```bash
-git clone https://github.com/harsh23533-del/heart-disease-predictor.git
-cd heart-disease-predictor
-
-conda create -n heart_env python=3.10
-conda activate heart_env
-
-pip install -r requirements.txt
-```
-
----
-
-## 🔑 Configuration
-
-Add API keys in `.streamlit/secrets.toml`:
-
-```toml
-GEMINI_API_KEY_1 = "your-key-here"
-GEMINI_API_KEY_2 = "your-backup-key"
-```
-
-⚠️ Never commit `secrets.toml` — add it to `.gitignore`.
-
----
-
-## ▶️ Run Locally
-
-```bash
-streamlit run app.py
-```
-
----
-
-## 📊 Model Details
-
-| Model | Algorithm | Metric | Format |
-|---|---|---|---|
-| Heart Disease Predictor | XGBoost | 94.53% AUC-ROC | `.pkl` |
-| Skin Analyzer | CNN (transfer learning) | — | `.onnx` |
-
----
-
-## 🚀 Deployment
-
-Deployed on **Streamlit Cloud** with API keys managed via Streamlit Secrets.
-
----
-
-## 🔮 Future Improvements
-
-- Add more disease prediction modules
-- Expand multilingual support
-- Add user authentication & history tracking
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License.
+🏥 Healthcare AI Platform
+A multi-page Streamlit app with a Smart Scanner that reads an uploaded lab report (PDF/image/text), auto-detects the medical parameters in it, and routes you straight to the right tool — pre-filled.
+🔍 Smart Scanner (entry point — app.py)
+Upload a PDF, image (PNG/JPG), or TXT report
+Extracts text via pdfplumber (PDF) or pytesseract OCR (image)
+Regex-matches 20+ known lab parameters (hemoglobin, glucose, creatinine, cholesterol, TSH, etc.) via scanner_engine.py
+Auto-routes to Heart Disease, Blood & Kidney, or Lab Report based on which parameters were found (falls back to symptom-keyword matching if no numeric values are detected)
+Pre-fills the destination page's sliders with the detected values
+🧰 Tools
+Tool
+File
+What it does
+🫀 Heart Disease Predictor
+pages/Heart_Disease.py
+XGBoost model (trained on UCI Cleveland dataset) + SHAP explainability, auto-trains on first run if model.pkl is missing
+🩸 Blood & Kidney Analyzer
+pages/Blood_Kidney.py
+Rule-based CBC + kidney function (creatinine, BUN, eGFR) analysis with slider inputs
+⚖️ BMI Calculator
+pages/BMI_Calculator.py
+Metric/Imperial BMI + category, with Plotly visualization
+👨‍⚕️ Doctor Finder
+pages/Doctor_Finder.py
+Live nearby doctor search using GPS + OpenStreetMap Overpass API, distance via geopy, map via folium
+🧴 Skin Analyzer
+pages/Skin_Analyzer.py
+23-class skin condition classifier (DermNet categories) via ONNX Runtime
+📄 Lab Report Summarizer
+pages/Lab_Report.py
+Rule-based multilingual (7+ languages) PDF/TXT lab report parser — no API needed
+🎤 Voice Assistant
+pages/Voice_Assistant.py
+Speech-to-text health Q&A in 7 Indian languages, answered via an LLM through OpenRouter API
+Note: app.py's tool grid also links a "Medical Image AI" card (pages/Medical_Image.py) — that page doesn't exist in the repo yet.
+🛠️ Tech Stack
+Frontend: Streamlit (multi-page)
+ML/DL: XGBoost, Optuna (hyperparameter tuning in train.py), scikit-learn, ONNX Runtime
+Explainability/Viz: SHAP, Plotly
+OCR/Parsing: pdfplumber, pytesseract
+Maps/Location: Overpass API, folium, streamlit-folium, geopy
+AI Chat: OpenRouter API (Voice Assistant only)
+Containerized: Dockerfile included (Python 3.11-slim)
+📂 Actual Project Structure
+Code
+⚙️ Setup
+Bash
+For the Voice Assistant, add in .streamlit/secrets.toml:
+Toml
+For image OCR (Smart Scanner), also install the system package tesseract-ocr — pip alone isn't enough.
+▶️ Run
+Bash
+🐳 Docker
+Bash
+📄 License
+MIT
+⚠️ For educational use only. Not a substitute for professional medical advice.
