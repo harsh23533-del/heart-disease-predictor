@@ -54,3 +54,21 @@ Bash
 📄 License
 MIT
 ⚠️ For educational use only. Not a substitute for professional medical advice.
+heart-disease-predictor/
+├── app.py                    # Main entry — Smart Scanner + tool grid
+├── Home.py                   # Simpler 2-tool landing page (alt entry)
+├── scanner_engine.py         # Text extraction, parameter detection, routing logic
+├── data_loader.py            # Loads + preprocesses UCI Cleveland heart dataset
+├── train.py                  # Optuna-tuned XGBoost training script
+├── classes.json              # 23 skin condition class labels
+├── skin_disease_model.onnx / .h5 / skin_model.tflite
+├── pages/
+│   ├── Heart_Disease.py
+│   ├── Blood_Kidney.py
+│   ├── BMI_Calculator.py
+│   ├── Doctor_Finder.py
+│   ├── Skin_Analyzer.py
+│   ├── Lab_Report.py
+│   └── Voice_Assistant.py
+├── Dockerfile
+└── requirements.txt
