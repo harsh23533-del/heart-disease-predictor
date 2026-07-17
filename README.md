@@ -1,3 +1,4 @@
+🚀 Live App: https://heart-disease-predictor-kwyhoqzo9kzch75zvokxrc.streamlit.app/
 # 🏥 Healthcare AI Platform
 
 A multi-page **Streamlit** app with a **Smart Scanner** that reads an uploaded lab report (PDF/image/text), auto-detects the medical parameters in it, and routes you straight to the right tool — pre-filled.
